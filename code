@@ -1,0 +1,65 @@
+# Assistant
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import numpy as np  # Added for generating sample data
+
+# Try to scrape the webpage with error handling
+url = "https://www.nerldc.in/frequency-profile/"
+try:
+    resp = requests.get(url, timeout=10)  # Added timeout
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    
+    # Locate the table for the latest date
+    table = soup.find("table", {"id":"daily-frequency-data"})
+    rows = table.tbody.find_all("tr")
+    
+    # Extract time & frequency
+    times, freq = [], []
+    today = datetime.now().date()
+    for r in rows:
+        cols = [c.text.strip() for c in r.find_all("td")]
+        t_raw, f_raw = cols[0], cols[1]
+        # Parse time and frequency
+        dt = datetime.combine(today, datetime.strptime(t_raw, "%H:%M").time())
+        times.append(dt)
+        freq.append(float(f_raw))
+        
+except (requests.exceptions.RequestException, AttributeError) as e:
+    print(f"Error accessing the website: {e}")
+    print("Generating sample data instead...")
+    
+    # Generate sample data since we can't access the real data
+    today = datetime.now().date()
+    times = [datetime.combine(today, datetime.strptime(f"{h:02d}:{m:02d}", "%H:%M").time()) 
+             for h in range(24) for m in [0, 15, 30, 45]]
+    
+    # Generate realistic frequency data (around 50 Hz with some variation)
+    np.random.seed(42)  # For reproducibility
+    freq = np.random.normal(50, 0.1, len(times))
+
+# Create DataFrame
+df = pd.DataFrame({"Time": times, "Frequency": freq})
+
+# Plot Time-Series with bounds
+plt.figure(figsize=(12,5))
+plt.plot(df["Time"], df["Frequency"], marker='o', color='orange')
+plt.axhline(50, linestyle='--', color='green', label='Nominal (50 Hz)')
+plt.axhline(49.85, linestyle=':', color='red', label='Lower Limit')
+plt.axhline(50.05, linestyle=':', color='red', label='Upper Limit')
+plt.title(f"✅ North Grid Frequency – {today.strftime('%d %b %Y')}")
+plt.xlabel("Time")
+plt.ylabel("Frequency (Hz)")
+plt.xticks(rotation=45)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Summary stats
+print("🔍 Frequency Stats:")
+print(df["Frequency"].describe().round(3))
+violations = df[(df["Frequency"] < 49.85) | (df["Frequency"] > 50.05)]
+print(f"⚠️ Bound violations: {len(violations)} records out of {len(df)}")
